@@ -1,6 +1,6 @@
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
+import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 st.set_page_config(page_title="Ventas 2024 vs 2025", layout="wide")
@@ -8,6 +8,7 @@ st.set_page_config(page_title="Ventas 2024 vs 2025", layout="wide")
 MESES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
 META_PCT = 4.0      # afirmación a verificar
 TOLERANCIA = 0.5    # puntos porcentuales para considerarla "aproximadamente correcta"
+COLOR_ANIO = {"2024": "#1f77b4", "2025": "#ff7f0e"}
 
 
 @st.cache_data
@@ -27,56 +28,54 @@ def comparativo_mensual(df, medida):
 
 
 def fig_lineas(comp, medida):
-    fig, ax = plt.subplots(figsize=(13, 5))
+    fig = go.Figure()
     for anio in [2024, 2025]:
-        ax.plot(comp.index, comp[anio], marker="o", label=str(anio))
-        for x, y in zip(comp.index, comp[anio]):
-            if pd.notna(y):
-                ax.annotate(f"{y:,.0f}", (x, y), textcoords="offset points",
-                            xytext=(0, 8), ha="center", fontsize=8)
-    ax.set_xticks(range(1, 13))
-    ax.set_xticklabels(MESES)
-    ax.set_title(f"{medida.capitalize()} por mes: 2024 vs 2025")
-    ax.set_ylabel(medida.capitalize())
-    ax.legend(title="Año")
-    ax.grid(alpha=0.3)
-    fig.tight_layout()
+        fig.add_trace(go.Scatter(
+            x=MESES, y=comp[anio], mode="lines+markers+text", name=str(anio),
+            text=comp[anio], texttemplate="%{y:,.0f}", textposition="top center",
+            line=dict(color=COLOR_ANIO[str(anio)]),
+            hovertemplate="%{x} " + str(anio) + ": %{y:,.0f}<extra></extra>",
+        ))
+    fig.update_layout(
+        title=f"{medida.capitalize()} por mes: 2024 vs 2025",
+        yaxis_title=medida.capitalize(), legend_title="Año",
+        hovermode="x unified", height=450,
+    )
     return fig
 
 
 def fig_dif_mensual(comp, medida):
-    fig, ax = plt.subplots(figsize=(13, 5))
-    colores = comp["dif_pct"].apply(lambda v: "tab:green" if v >= 0 else "tab:red")
-    barras = ax.bar(comp.index, comp["dif_pct"], color=colores)
-    for b, v in zip(barras, comp["dif_pct"]):
-        if pd.notna(v):
-            ax.annotate(f"{v:+.1f}%", (b.get_x() + b.get_width() / 2, v),
-                        textcoords="offset points", xytext=(0, 5 if v >= 0 else -12),
-                        ha="center", fontsize=9)
-    ax.axhline(0, color="black", linewidth=0.8)
-    ax.set_xticks(range(1, 13))
-    ax.set_xticklabels(MESES)
-    ax.set_title(f"Variación % de {medida} por mes: 2025 vs 2024")
-    ax.set_ylabel("Diferencia (%)")
-    ax.grid(axis="y", alpha=0.3)
-    fig.tight_layout()
+    colores = ["#2ca02c" if v >= 0 else "#d62728" for v in comp["dif_pct"].fillna(0)]
+    fig = go.Figure(go.Bar(
+        x=MESES, y=comp["dif_pct"], marker_color=colores,
+        text=comp["dif_pct"], texttemplate="%{y:+.1f}%", textposition="outside",
+        hovertemplate="%{x}: %{y:+.2f}%<extra></extra>",
+    ))
+    fig.add_hline(y=0, line_color="black", line_width=1)
+    fig.update_layout(
+        title=f"Variación % de {medida} por mes: 2025 vs 2024",
+        yaxis_title="Diferencia (%)", height=450,
+    )
     return fig
 
 
 def fig_total_anual(total, medida):
     dif = (total[2025] - total[2024]) / total[2024] * 100
-    fig, ax = plt.subplots(figsize=(7, 5))
-    barras = ax.bar(["2024", "2025"], [total[2024], total[2025]], color=["tab:blue", "tab:orange"])
-    for b, v in zip(barras, [total[2024], total[2025]]):
-        ax.annotate(f"{v:,.0f}", (b.get_x() + b.get_width() / 2, v),
-                    textcoords="offset points", xytext=(0, 5), ha="center", fontsize=10)
-    ymax = max(total[2024], total[2025])
-    ax.annotate(f"{dif:+.1f}%", xy=(0.5, ymax * 1.08), ha="center", fontsize=14,
-                fontweight="bold", color="tab:green" if dif >= 0 else "tab:red")
-    ax.set_ylim(0, ymax * 1.18)
-    ax.set_title(f"{medida.capitalize()} total: 2024 vs 2025")
-    ax.grid(axis="y", alpha=0.3)
-    fig.tight_layout()
+    valores = [total[2024], total[2025]]
+    ymax = max(valores)
+    fig = go.Figure(go.Bar(
+        x=["2024", "2025"], y=valores, marker_color=[COLOR_ANIO["2024"], COLOR_ANIO["2025"]],
+        text=valores, texttemplate="%{y:,.0f}", textposition="outside",
+        hovertemplate="%{x}: %{y:,.0f}<extra></extra>",
+    ))
+    fig.add_annotation(
+        x=0.5, y=ymax * 1.12, text=f"<b>{dif:+.1f}%</b>", showarrow=False,
+        font=dict(size=22, color="#2ca02c" if dif >= 0 else "#d62728"),
+    )
+    fig.update_layout(
+        title=f"{medida.capitalize()} total: 2024 vs 2025",
+        yaxis=dict(range=[0, ymax * 1.25]), height=450,
+    )
     return fig, dif
 
 
@@ -96,8 +95,8 @@ def seccion(df, medida, clave):
 
     # 1) Explicación mensual
     st.subheader(f"1. Breve explicación de {medida} por mes")
-    st.pyplot(fig_lineas(comp, medida))
-    st.pyplot(fig_dif_mensual(comp, medida))
+    st.plotly_chart(fig_lineas(comp, medida), use_container_width=True, key=f"{clave}_lineas")
+    st.plotly_chart(fig_dif_mensual(comp, medida), use_container_width=True, key=f"{clave}_dif")
     tabla = comp.rename_axis("mes").reset_index()
     tabla["mes"] = tabla["mes"].map(lambda m: MESES[m - 1])
     st.dataframe(tabla.round(2), use_container_width=True, hide_index=True)
@@ -105,9 +104,9 @@ def seccion(df, medida, clave):
     # 2) Resumen anual
     st.subheader(f"2. Resumen anual de {medida}")
     fig, dif = fig_total_anual(total, medida)
-    c1, c2 = st.columns([1, 1])
+    c1, c2 = st.columns([2, 1])
     with c1:
-        st.pyplot(fig)
+        st.plotly_chart(fig, use_container_width=True, key=f"{clave}_total")
     with c2:
         st.metric("2024", f"{total[2024]:,.0f}")
         st.metric("2025", f"{total[2025]:,.0f}", f"{dif:+.2f}%")
@@ -138,51 +137,46 @@ with tab_reg:
 
     c1, c2 = st.columns(2)
     with c1:
-        fig, ax = plt.subplots(figsize=(8, 5))
-        x = range(len(reg))
-        ax.bar([i - 0.2 for i in x], reg[2024], width=0.4, label="2024", color="tab:blue")
-        ax.bar([i + 0.2 for i in x], reg[2025], width=0.4, label="2025", color="tab:orange")
-        ax.set_xticks(list(x))
-        ax.set_xticklabels(reg.index, rotation=45)
-        ax.set_title(f"{medida.capitalize()} anual por región")
-        ax.legend()
-        ax.grid(axis="y", alpha=0.3)
-        fig.tight_layout()
-        st.pyplot(fig)
+        reg_largo = (
+            reg[[2024, 2025]].rename(columns=str).reset_index()
+            .melt(id_vars="region", var_name="anio", value_name=medida)
+        )
+        fig = px.bar(
+            reg_largo, x="region", y=medida, color="anio", barmode="group",
+            color_discrete_map=COLOR_ANIO, text_auto=",.0f",
+            title=f"{medida.capitalize()} anual por región",
+        )
+        fig.update_layout(legend_title="Año", xaxis_title="", height=450)
+        st.plotly_chart(fig, use_container_width=True, key=f"reg_anual_{medida}")
     with c2:
-        fig, ax = plt.subplots(figsize=(8, 5))
-        colores = reg["dif_pct"].apply(lambda v: "tab:green" if v >= 0 else "tab:red")
-        barras = ax.bar(reg.index, reg["dif_pct"], color=colores)
-        for b, v in zip(barras, reg["dif_pct"]):
-            ax.annotate(f"{v:+.1f}%", (b.get_x() + b.get_width() / 2, v),
-                        textcoords="offset points", xytext=(0, 5 if v >= 0 else -12),
-                        ha="center", fontsize=9)
-        ax.axhline(META_PCT, color="gray", linestyle="--", label=f"Meta +{META_PCT:.0f}%")
-        ax.axhline(0, color="black", linewidth=0.8)
-        ax.set_title("Variación % 2025 vs 2024 por región")
-        ax.tick_params(axis="x", rotation=45)
-        ax.legend()
-        ax.grid(axis="y", alpha=0.3)
-        fig.tight_layout()
-        st.pyplot(fig)
+        colores = ["#2ca02c" if v >= 0 else "#d62728" for v in reg["dif_pct"]]
+        fig = go.Figure(go.Bar(
+            x=reg.index, y=reg["dif_pct"], marker_color=colores,
+            text=reg["dif_pct"], texttemplate="%{y:+.1f}%", textposition="outside",
+            hovertemplate="%{x}: %{y:+.2f}%<extra></extra>",
+        ))
+        fig.add_hline(y=META_PCT, line_dash="dash", line_color="gray",
+                      annotation_text=f"Meta +{META_PCT:.0f}%")
+        fig.add_hline(y=0, line_color="black", line_width=1)
+        fig.update_layout(title="Variación % 2025 vs 2024 por región",
+                          yaxis_title="Diferencia (%)", height=450)
+        st.plotly_chart(fig, use_container_width=True, key=f"reg_dif_{medida}")
 
     st.dataframe(reg.round(2).reset_index(), use_container_width=True, hide_index=True)
 
     # Mapa de calor: variación % por mes y región
     st.subheader("Variación % por mes y región")
-    pivot = (
-        df.groupby(["region", "anio", "mes"])[medida].sum().unstack("anio")
-    )
+    pivot = df.groupby(["region", "anio", "mes"])[medida].sum().unstack("anio")
     pivot["dif_pct"] = (pivot[2025] - pivot[2024]) / pivot[2024] * 100
     heat = pivot["dif_pct"].unstack("mes").reindex(columns=range(1, 13))
     heat.columns = MESES
-    fig, ax = plt.subplots(figsize=(13, 4 + 0.4 * len(heat)))
-    sns.heatmap(heat, annot=True, fmt=".1f", cmap="RdYlGn", center=0, ax=ax,
-                cbar_kws={"label": "Diferencia (%)"})
-    ax.set_xlabel("")
-    ax.set_ylabel("")
-    fig.tight_layout()
-    st.pyplot(fig)
+    fig = px.imshow(
+        heat, text_auto=".1f", aspect="auto",
+        color_continuous_scale="RdYlGn", color_continuous_midpoint=0,
+        labels=dict(color="Diferencia (%)"),
+    )
+    fig.update_layout(xaxis_title="", yaxis_title="", height=300 + 40 * len(heat))
+    st.plotly_chart(fig, use_container_width=True, key=f"reg_heat_{medida}")
 
     # Detalle de una región (mismo análisis que en las pestañas globales)
     st.subheader("Detalle por región")
